@@ -154,7 +154,7 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
 !
 !   dump (covariate,observation) pairs to plotfile on unit 15
 !
-    call write_obscov(xx,yrs,ntot,-3e33,cov2,xyear,year,offset,lchangesign)
+    if ( dump ) call write_obscov(xx,yrs,ntot,-3e33,cov2,xyear,year,offset,lchangesign)
 !
 !   first-guess estaimtes of the parameters
 !
@@ -194,7 +194,7 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
         call getabfromcov(a,b,alpha,beta,cov3,aaa,bbb)
         acov(1,3) = aaa
     end if
-    call write_threshold(cmin,cmax,a,b,xi,alpha,beta,offset,lchangesign,gevcovreturnlevel)
+    if ( dump ) call write_threshold(cmin,cmax,a,b,xi,alpha,beta,offset,lchangesign,gevcovreturnlevel)
 !
 !   bootstrap to find error estimates
 !
@@ -407,6 +407,7 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
             print '(a)','# <tr><td colspan="4">Fitted to GEV '//            &
                  'distribution P(x) = exp(-(1+&xi;(x-&mu;)'//             &
                      '/&sigma;)^(-1/&xi;))</td></tr>'
+            call printab(restrain,lnone,lweb)
             print '(a,f16.3,a,f16.3,a,f16.3,a)','# <tr><td colspan=2>'//         &
                  '&mu;:</td><td>',a,'</td><td>',       &
                  a25,'...',a975,'</td></tr>'
@@ -424,7 +425,7 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
             print '(a)','# <tr><td colspan="4">Fitted to GEV '//            &
                  'distribution P(x) = exp(-(1+&xi;(x-&mu;'')'//             &
                      '/&sigma;'')^(-1/&xi;))</td></tr>'
-            call printab(lweb)
+            call printab(restrain,lnone,lweb)
             call getabfromcov(a,b,alpha,beta,cov1,aaa,bbb)
             call getabfromcov(a25,b25,alpha,beta,cov1,aa25,bb25)
             call getabfromcov(a975,b975,alpha,beta,cov1,aa975,bb975)
@@ -462,12 +463,13 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
     else
         print '(a,i5,a)','# Fitted to GEV distribution in ',iter,' iterations'
         if ( lnone ) then
-            print '(a)','# P(x) = exp(-(1+xi*(x-a/b)**(-1/xi)) with'
+            print '(a)','# P(x) = exp(-(1+xi*(x-a/b)**(-1/xi))'
+            call printab(restrain,lnone,lweb)
             print '(a,f16.3,a,f16.3,a,f16.3)','# a = ',a,' \\pm ',(a975-a25)/2
             print '(a,f16.3,a,f16.3,a,f16.3)','# b = ',b,' \\pm ',(b975-b25)/2
         else
             print '(a)','# P(x) = exp(-(1+xi*(x-a''/b'')**(-1/xi)) with'
-            call printab(lweb)
+            call printab(restrain,lnone,lweb)
             call getabfromcov(a,b,alpha,beta,cov1,aaa,bbb)
             call getabfromcov(a25,b25,alpha,beta,cov1,aa25,bb25)
             call getabfromcov(a975,b975,alpha,beta,cov1,aa975,bb975)
@@ -498,7 +500,7 @@ subroutine fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr                   &
         call plot_tx_cdfs(txtx,nmc,iens,ntype,j1,j2)
     end if
     if ( plot ) write(11,'(3g20.4,a)') alpha,alpha25,alpha975,' alpha'
-    call write_dthreshold(cov1,cov2,cov3,acov,offset,lchangesign)
+    if ( dump ) call write_dthreshold(cov1,cov2,cov3,acov,offset,lchangesign)
 
     ! no cuts
     mindata = -2e33
@@ -900,7 +902,7 @@ real function llgevcov(p)
     llgevcov = -llgevcov
 !
 999 continue
-    if ( llwrite ) print *,'a,b,xi,alpha,llgevcov = ',p(1),p(2),p(3),p(4),llgevcov
+    if ( llwrite .and. .false. ) print *,'a,b,xi,alpha,llgevcov = ',p(1),p(2),p(3),p(4),llgevcov
 end function llgevcov
 
 subroutine gevcovnorm(a,b,xi,alpha,beta,s)

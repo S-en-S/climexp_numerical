@@ -188,7 +188,7 @@ program correlatefield
         aaa1 = 3e33
         bbb1 = 3e33
     end if
-    allocate(yrmo(2,ndatmax),lfirst(ndatmax))
+    allocate(yrmo(3,ndatmax),lfirst(ndatmax))
     allocate(ddata(ndatmax),dindx(ndatmax),dddata(ndatmax))
 !
 !   init
@@ -812,6 +812,7 @@ program correlatefield
 !!!     +                                           ') = ',fxy(m,ii,iens)
                                         yrmo(1,n) = i
                                         yrmo(2,n) = j
+                                        yrmo(3,n) = iens
                                         yrstart = min(yrstart,i,ii)
                                         yrstop  = max(yrstop,i,ii)
                                     end if ! valid point
@@ -905,7 +906,7 @@ program correlatefield
                         if ( df < 1 ) then
                             df = 3e33
                         end if
-                        if ( df < 1 ) then
+                        if ( df < 1 .or. df > 1e33 ) then
                             r(jx,jy,jz,m) = 3e33
                             prob(jx,jy,jz,m) = 3e33
                             a(jx,jy,jz,m) = 3e33
@@ -933,7 +934,7 @@ program correlatefield
                             end if
                             sum = n/(df+2)
                             if ( lwrite ) then
-                                print *,'sum  is: ',sum
+                                print *,'sum  is: ',sum,n,df
                             end if
                             call spearx(ddata,dindx,n,ddata,dindx,d     &
                                   ,zd,probd,r(jx,jy,jz,m),              &

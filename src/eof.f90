@@ -12,27 +12,28 @@ program eof
     include 'getopts.inc'
     integer,parameter :: recfa4=4
     integer,parameter :: nvarmax=1,nyrmax=79,neofmax=500,ntmax=24*366
-    integer,parameter :: nxymax=120*61,lwork=107208721,liwork=36603 ! ssyevd
+    integer,parameter :: nxymax=180*100,lwork=648108032,liwork=90003 ! ssyevd
     integer :: i,ii,i1,i2,j,jj,j1,j2,jx,jy,k,m,n,n1,n2,nx,ny,nz,nt &
         ,month,yr,mo,nperyear,neigen,ldir,nxf,nyf
     integer :: firstyr,firstmo,nvars,ivars(2,neofmax),jvars(6,neofmax) &
         ,ncid,endian,status,iarg,mens1,mens,fyr,lyr,nnmax,ntvarid,itimeaxis(ntmax)
     integer :: x1,x2,y1,y2,nn(nxmax,nymax),nxy,indx(2,nxymax),isupeof(2*neofmax)
-    integer :: iwork(liwork),info,nrec,mm1,mm2,mm,ncovs,iens,retval &
+    integer :: info,nrec,mm1,mm2,mm,ncovs,iens,retval &
         ,yrstart,yrstop,lun
+    integer,allocatable :: iwork(:)
     real :: xx(nxmax),yy(nymax),zz(nzmax),undef,xxls(nxmax),yyls(nymax)
     real :: fac,sum,wgt,wx(nxmax),wy(nymax),dum,eigen(nxymax),eps,a,b,t,s
-    real :: cov(nxymax,nxymax),work(lwork)
+    real,allocatable :: cov(:,:),work(:)
     real,allocatable :: field(:,:,:,:,:)
     real,allocatable :: fxy(:,:,:),pc(:,:,:,:),eofxy(:,:,:),pattern(:,:,:,:)
     real*4 :: tarray(2)
     character title*255,vars(neofmax)*60,lvars(neofmax)*200, &
         units(neofmax)*20,lsmasktype*4,outfile*255,infile*255, &
         datfile*255,line*255,yesno*1,dir*255,string*20, &
-        fieldtitle*255,lvar*200,unit*80,cell_methods(nvarmax)*100, &
+        fieldtitle*255,lvar*200,unit*80,cell_methods(neofmax)*100, &
         history*50000,ltime*120,lz(3)*20,svars(neofmax)*80, &
         metadata(2,100)*2000,FORM_field*250
-    logical :: lexist,xrev,yrev,xwrap
+    logical :: lexist,xrev,yrev,xwrap,compute_work_sizes
     integer :: getpid,putenv,system
     real*4 :: etime
 
@@ -432,6 +433,7 @@ program eof
         else
             units(i) = unit
         end if
+        if ( i > 1 ) cell_methods(i) = cell_methods(1)
     end do
     call getenv(FORM_field,FORM_field)
 !   adjust x axis to what it was before we started playing
@@ -474,6 +476,7 @@ program eof
 
 !   compute covariance matrix
 
+    allocate(cov(nxymax,nxymax))
     ncovs = 0
     do month=m1,m2
 !       memory corruption or bug in gfortran - but it happens...
@@ -550,21 +553,14 @@ program eof
 !       compute eigenvectors - LAPACK routine, see manpage.
     
         dum = 0
-        eps = 1e-3
-        if ( lwork == 1 .or. liwork == 1 ) then
-            print *,'Computing work size arrays'
-            i = -1
-            j = -1
-            nxy = nxymax
-        else
-            write(0,'(a,i8,a,f8.2,a)')'Computing eigenvalues, nxy= ' &
+    eps = 1e-3
+        write(0,'(a,i8,a,f8.2,a)')'Computing eigenvalues, nxy= ' &
             ,nxy,', time: ',etime(tarray),'<p>'
-            i = lwork
-            j = liwork
-        end if
-    
+        i = lwork
+        j = liwork
+
 !       estimate time needed for routine and start keepalive job
-    
+
         call getenv('DIR',dir)
         ldir = len_trim(dir)
         if ( ldir <= 1 ) then
@@ -590,6 +586,14 @@ program eof
 !       and call lapack
     
         if ( lwrite) print '(a)','Calling LAPACK routine ssyevd'
+        compute_work_sizes = .false. ! run once if nxymax changes
+        if ( compute_work_sizes ) then
+            i = -1
+            j = -1
+            nxy = nxymax
+        end if
+        allocate(iwork(liwork))
+        allocate(work(lwork))
         call ssyevd('V','U',nxy,cov,nxymax,eigen,work,i,iwork,j,info)
         if ( i == -1 .or. j == -1 ) then
             print *,'for nxymax =  ',nxy
@@ -748,6 +752,12 @@ program eof
 !   finito
 
     call savestartstop(yrstart,yrstop)
+    write(string,'(i19)') getpid()
+    write(line,'(4a)') dir(1:len_trim(dir)),'./kill_stillcomputing.cgi ',trim(string)
+    call mysystem(line,retval)
+    if ( retval /= 0 ) then
+        write(0,*) 'eof: error: ',trim(line),' failed: ',retval
+    end if
     print '(a,f8.2)','finished, time: ',etime(tarray)
 
 !	error messages

@@ -242,12 +242,12 @@ subroutine printcovreturntime(year,xyear,idmax,tx,tx25,tx975,yr1a,yr2a,yr2b,lweb
                         ,yr2a,'</td><td>',ainvtx(2), &
                         '</td><td>',ainvtx975(2),' ... ',ainvtx25(2),'</td></tr>'
                     print '(8a)' &
-                            ,'# <tr><td><!--atra-->risk ratio</td><td>&nbsp;', &
+                            ,'# <tr><td><!--atra-->probability ratio</td><td>&nbsp;', &
                             '</td><td>',atx(3),'</td><td>',atx25(3), &
                             ' ... ',atx975(3),'</td></tr>'
                     if ( tx(3) < 1 ) then
                         print '(8a)' &
-                            ,'# <tr><td>inverse risk ratio</td><td>&nbsp;', &
+                            ,'# <tr><td>inverse probability ratio</td><td>&nbsp;', &
                             '</td><td>',ainvtx(3),'</td><td>',ainvtx975(3), &
                             ' ... ',ainvtx25(3),'</td></tr>'
                     end if
@@ -320,7 +320,7 @@ subroutine printcovpvalue(txtx,nmc,nens,lweb,plot)
     call invgetcut(p,one,nens,txtx(1,3))
     if ( p > 0.5 ) p = 1-p
     if ( lweb ) then
-        print '(2a,f7.4,2a)','# <tr><td><i>p</i>-value risk ratio (one-sided)', &
+        print '(2a,f7.4,2a)','# <tr><td><i>p</i>-value probability ratio (one-sided)', &
             '</td><td>&#8800; 1</td><td>',p,'</td><td>&nbsp;</td>', &
             '</tr>'
     else
@@ -936,35 +936,53 @@ subroutine getabfromcov(a,b,alpha,beta,cov,aa,bb)
 end subroutine getabfromcov
 
 
-subroutine printab(lweb)
+subroutine printab(restrain,lnone,lweb)
     implicit none
-    logical :: lweb
+    real,intent(in) :: restrain
+    logical,intent(in) :: lnone,lweb
+    character :: string*80
     character cassume*5
     common /fitdata4/ cassume
 
+    string = ' '
+    if ( restrain /= 0 ) then 
+        if ( lweb ) then
+            write(string,'(a,f4.1)') ' and a Gaussian penalty on &xi; of width ',restrain/2
+        else
+            write(string,'(a,f4.1)') ' and a Gaussian penalty on xi of width ',restrain/2
+        end if
+    end if
     if ( lweb ) then
-        if ( cassume == 'shift' ) then
+        if ( lnone ) then
+            if ( string /= ' ' ) then
+                print '(a)','# <tr><td colspan="4">'//trim(string)//'</td></tr>'
+            endif
+        else if ( cassume == 'shift' ) then
             print '(a)','# <tr><td colspan="4">'// &
                 'with &mu;''= &mu;+&alpha;T '// &
-            '   and &sigma;'' = &sigma;</td></tr>'
+            '   and &sigma;'' = &sigma;'//trim(string)//'</td></tr>'
         else if ( cassume == 'scale' ) then
             print '(a)','# <tr><td colspan="4">'// &
                 'with &mu;'' = &mu; exp(&alpha;T/&mu;) and '// &
-                '&sigma;'' = &sigma; exp(&alpha;T/&mu;)</td></tr>'
+                '&sigma;'' = &sigma; exp(&alpha;T/&mu;)'//trim(string)//'</td></tr>'
         else if ( cassume == 'both' ) then
             print '(a)','# <tr><td colspan="4">'// &
                 'with &mu;''= &mu;+&alpha;T '// &
-                'and &sigma;'' = &sigma;+&beta;T</td></tr>'
+                'and &sigma;'' = &sigma;+&beta;T'//trim(string)//'</td></tr>'
         else
             write(0,*) 'printab: error: unknow value for assume ',cassume
         end if
     else
-        if ( cassume == 'shift' ) then
-            print '(a)','a'' = a+alpha*T, b''= b'
+        if ( lnone ) then
+            if ( string /= ' ' ) then
+                print '(a)',trim(string)
+            end if
+        else if ( cassume == 'shift' ) then
+            print '(a)','a'' = a+alpha*T, b''= b'//trim(string)
         else if ( cassume == 'scale' ) then
-            print '(a)','a'' = a*exp(alpha*T/a), b''= b*a''/a'
+            print '(a)','a'' = a*exp(alpha*T/a), b''= b*a''/a'//trim(string)
         else if ( cassume == 'both' ) then
-            print '(a)','a'' = a+alpha*T, b''= b+beta*T'
+            print '(a)','a'' = a+alpha*T, b''= b+beta*T'//trim(string)
         else
             write(0,*) 'printab: error: unknow value for assume ',cassume
         end if
@@ -1071,7 +1089,7 @@ subroutine write_obscov(xx,yrs,ntot,xmin,cov2,xyear,year,offset,lchangesign)
             write(15,'(g20.6,a,i11)') cov2+offset,'-999.900',0
         end if
     end if
-    end subroutine write_obscov
+end subroutine write_obscov
 
 
 subroutine write_threshold(cmin,cmax,a,b,xi,alpha,beta,offset,lchangesign,covreturnlevel)

@@ -237,7 +237,10 @@ OBJS =	makeabsent.o \
 		calcTp90.o \
 		calcRXXp.o \
 		calcRXXpTOT.o \
+		calcFreqDistr.o \
+		calcFreqDistrRR.o \
 		indexSupport.o \
+		climexp2extreme.o \
 		isnan.o \
 		legzo.o \
 		nperyear2string.o \
@@ -366,7 +369,8 @@ PROGRAMS	  = proccgi \
 		count_missing \
 		setundef \
 		diff_hist_nat \
-		cumul
+		cumul \
+		select_min_years
 
 # SHLIBS =	rkillfile.so \
 # 			rkeepalive.so
@@ -468,9 +472,6 @@ patternfield:	patternfield.o	$(LIBRARY)
 
 daily2longerfield:	daily2longerfield.o	 $(LIBRARY)
 		$(LD) $(FFLAGS) $(LDBIGFLAG) -o $@ $@.o $(LIBS)
-
-variate:	variations.o $(LIBRARY)
-		$(LD) $(FFLAGS) -o $@ variations.o $(LIBS)
 
 autocor:	autocor.o $(LIBRARY)
 		$(LD) $(FFLAGS) -o $@ $@.o $(LIBS)
@@ -772,6 +773,9 @@ diff_hist_nat:	diff_hist_nat.o
 cumul:	cumul.o $(LIBRARY)
 		$(LD) $(FFLAGS) -o $@ $@.o $(LIBS)
 
+select_min_years:	select_min_years.o
+		$(LD) $(FFLAGS) -o $@ $@.o $(LIBS)
+
 roc:		roc.o $(LIBRARY)
 		$(LD) $(FFLAGS) -o $@ $@.o $(LIBS)
 
@@ -798,7 +802,7 @@ Briar:		Briar.o
 
 climexp2extreme.o:	climexp2extreme.f90 extreme.h
 
-extreme.h:	comgeneral.h
-		grep 'yrbeg' ../comgeneral.h > ../$@
-		grep 'nseason' ../comgeneral.h >> ../$@
+extreme.h:	../comgeneral.h
+		grep 'yrbeg' ../comgeneral.h > ../src/$@
+		grep 'nseason' ../comgeneral.h >> ../src/$@
 

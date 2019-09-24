@@ -10,7 +10,7 @@ subroutine getperyear(ncid,varid,tt,nt,firstmo,firstyr,nperyear &
     real*8 :: tt(ntmax)
     character ltime*(*)
     logical :: tdefined(ntmax),lwrite
-    integer :: i,j,k,n,it,status,iperyear,firstdy,dpm(12,2)
+    integer :: i,j,k,n,it,status,iperyear,firstdy,firsthr,dpm(12,2)
     real*8 :: dtt,tt0,dtt1,dtt2
     character units*(nf_max_name),timeorigin*(nf_max_name), &
     calendar*(nf_max_name)
@@ -70,7 +70,7 @@ subroutine getperyear(ncid,varid,tt,nt,firstmo,firstyr,nperyear &
     i = index(units,'since')
     if ( i == 0 ) then
         if ( lwrite ) print *,'getperyear: cannot find "since" in ', &
-        'time units ',trim(units),', trying time_origin'
+            'time units ',trim(units),', trying time_origin'
         call gettextatt(ncid,varid,'time_origin',timeorigin,lwrite)
         units(len_trim(units)+1:) = ' since '//timeorigin(1:i)
         n = n + 7 + i
@@ -92,9 +92,9 @@ subroutine getperyear(ncid,varid,tt,nt,firstmo,firstyr,nperyear &
                         i = index(units,'seconds since')
                         if ( i == 0 ) then
                             write(0,*) 'getperyear: cannot handle ' &
-                            ,'unit ''',trim(units),''', only ' &
-                            ,'''days/months/hours/minutes/' &
-                            ,'seconds since'''
+                                ,'unit ''',trim(units),''', only ' &
+                                ,'''days/months/hours/minutes/' &
+                                ,'seconds since'''
                             call exit(-1)
                         else
                             i = i+13
@@ -152,8 +152,7 @@ subroutine getperyear(ncid,varid,tt,nt,firstmo,firstyr,nperyear &
             if ( nperyear > 0 .and. iperyear > 0 .and. nperyear <= iperyear .and. nperyear /= 36 ) then
                 nperyear = nint(real(iperyear)/nint(real(iperyear)/nperyear))
             end if
-            if ( lwrite ) print *,'iperyear,nperyear = ' &
-            ,iperyear,nperyear
+            if ( lwrite ) print *,'iperyear,nperyear = ' ,iperyear,nperyear
         else
             if ( j == 0 .and. k == 0 ) then
                 i = i+12
@@ -225,6 +224,34 @@ subroutine getperyear(ncid,varid,tt,nt,firstmo,firstyr,nperyear &
          ichar(units(j:j)) <= ichar('9') ) goto 113
     read(units(i:j-1),'(i2)') firstdy
     if ( lwrite ) print *,'read firstdy=',firstdy
+    firsthr = 0
+    if ( units(j+1:) /= ' ' ) then
+        i = j+1
+        j = i
+    114 continue
+        j = j+1
+        if ( ichar(units(j:j)) >= ichar('0') .and. &
+             ichar(units(j:j)) <= ichar('9') ) goto 114
+        if ( j > i ) then
+            read(units(i:j-1),'(i2)') firsthr
+            if ( lwrite ) print *,'read firsthr=',firsthr
+            if ( firsthr > 0 ) then
+                if ( nint(iperyear/365.25) == 24 ) then
+                    if ( lwrite ) print *,'Shifting tt by ',firsthr,' hours'
+                    tt = tt + firsthr
+                    firsthr = 0
+                else if ( nint(iperyear/365.25/60) == 24 ) then
+                    if ( lwrite ) print *,'Shifting tt by ',60*firsthr,' minutes'
+                    tt = tt + 60*firsthr
+                    firsthr = 0
+                else if ( nint(iperyear/365.25/3600) == 24 ) then
+                    if ( lwrite ) print *,'Shifting tt by ',60*60*firsthr,' seconds'
+                    tt = tt + 60*60*firsthr
+                    firsthr = 0
+                end if
+            end if
+        end if
+    end if
 !       NCEP/NCAR reanalysis have hours since 1-1-1;
 !       renormalize to avoid round-off error and calendar
 !       problems (should be using udunits...)
@@ -805,15 +832,16 @@ subroutine getglobalatts(ncid,metadata,lwrite)
 !   key,value pairs in metadata. Only 100 for the time being, the way CF is
 !   developing I'll soon need more.
 
+    implicit none
     include 'netcdf.inc'
     integer ::ncid
     logical :: lwrite
     character :: metadata(2,100)*(*)
-    integer :: i,j,xtype,ll,status,iarray(100)
+    integer :: i,j,n,xtype,ll,status,iarray(100)
     integer*1 :: sarray(100)
     real :: farray(100)
     logical :: lskip
-    character name*100,string*100000
+    character :: name*100,string*100000
     
     n = 0
     metadata = ' '
@@ -963,28 +991,22 @@ subroutine getdims(ncid,ndims,ix,nx,nxmax,iy,ny,nymax,iz,nz &
         call tolower(name)
         if ( index(name,'_bnd') /= 0 .or. &
         index(name,'bounds') /= 0 ) then
-            if ( lwrite ) print * &
-            ,'getdims: disregarding boundary ' &
-            ,trim(name)
+            if ( lwrite ) print *,'getdims: disregarding boundary ',trim(name)
             cycle
         endif
         l = len_trim(name)
         if ( name(1:3) == 'tim' .or. name == 't' .or. name == 't1' &
-         .or. name(1:2) == 't_' ) then
+            .or. name(1:2) == 't_' .or. name == 'day' ) then
             if ( lwrite ) print *,'getdims: found time'
             nt = len
             it = dimid
             if ( nt > ntmax ) then
-                write(0,*) 'getdims: error: increase ntmax from ' &
-                ,ntmax,' to at least ',nt
-                write(*,*) 'getdims: error: increase ntmax from ' &
-                ,ntmax,' to at least ',nt
+                write(0,*) 'getdims: error: increase ntmax from ',ntmax,' to at least ',nt
+                write(*,*) 'getdims: error: increase ntmax from ',ntmax,' to at least ',nt
                 call exit(-1)
             endif
-        elseif ( name == 'x' .or. name(1:2) == 'x_' .or. &
-            name(1:3) == 'lon' &
-             .and. name(max(1,l-4):l) /= 'edges' .or. &
-            name(1:4) == 'xdim' ) then
+        elseif ( name == 'x' .or. name(1:2) == 'x_' .or. name(1:3) == 'lon' &
+                .and. name(max(1,l-4):l) /= 'edges' .or. name(1:4) == 'xdim' ) then
             if ( nx == 1 ) then
                 if ( lwrite ) print *,'getdims: found lon'
                 nx = len
@@ -999,10 +1021,8 @@ subroutine getdims(ncid,ndims,ix,nx,nxmax,iy,ny,nymax,iz,nz &
                     write(0,*) 'getdims: ignoring duplicate lon'
                 end if
             endif
-        elseif ( name == 'y' .or. name(1:2) == 'y_' .or. &
-            name(1:3) == 'lat' &
-             .and. name(max(1,l-4):l) /= 'edges' .or. &
-            name(1:4) == 'ydim') then
+        elseif ( name == 'y' .or. name(1:2) == 'y_' .or. name(1:3) == 'lat' &
+                .and. name(max(1,l-4):l) /= 'edges' .or. name(1:4) == 'ydim') then
             if ( ny == 1 ) then
                 if ( lwrite ) print *,'getdims: found lat'
                 ny = len

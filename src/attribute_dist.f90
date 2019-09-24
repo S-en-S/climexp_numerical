@@ -13,14 +13,15 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
     real :: results(3,nresmax)
     character :: seriesids(0:mens)*(*),assume*(*),distribution*(*)
     character :: var*(*),units*(*),lvar*(*),svar*(*),history*(*),metadata(2,100)*(*)
-    integer :: fyr,lyr,ntot,i,j,k,ntype,nmax,npernew,j1,j2,iens,jens,ensmax,init,ndecor,n
+    integer :: fyr,lyr,ntot,i,j,k,ntype,nmax,npernew,j1,j2,iens,jens,ensmax,init,ndecor,n,yr,mo
     integer,allocatable :: yrs(:)
     real :: a(3),b(3),xi(3),alpha(3),beta(3),cov1,cov2,cov3,offset,t(3,10,3),tx(3,3), &
         regr,intercept,sigb,siga,chi2,q,prob,z,ax,sxx,ay,syy,sxy,df
     real,allocatable :: xx(:,:),yrseries(:,:,:),yrcovariate(:,:,:),yy(:),crosscorr(:,:), &
-        xxx(:,:,:),yyy(:),zzz(:),sig(:)
+        xxx(:,:,:),yyy(:),zzz(:),sig(:),yrseries1(:,:,:)
     logical :: lboot,lprint,subtract_offset,lset,lopen
     character :: operation*4,file*1024,idmax*30,string*20
+    real,external :: gevcovreturnlevel,gpdcovreturnlevel,gaucovreturnlevel
     data init /0/
 
     call getenv('TYPE',string)
@@ -88,7 +89,7 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
             call print_bootstrap_message(max(1,ndecor),j1,j2)
         end if
     else if ( distribution == 'gpd' .or. distribution == 'gauss' ) then
-        ! in the others lsum inicates the block maxima length...
+        ! in the others lsum indicates the block maxima length...
         call getj1j2(j1,j2,m1,nperyear,lwrite)
         decor = max(decor,real(lsum)-1)
         if ( j1 == j2 ) then
@@ -143,8 +144,20 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
     end if
     
     if ( lwrite ) print *,'attribute_dist: calling handle_then_now'
+    if ( mens < 0 ) then
+        write(0,*) 'attribute_dist: internal error: mens = ',mens
+        call exit(-1)
+    end if
+    if ( biasrt > 0 ) then
+        if ( xyear < 1e33 ) then
+            write(0,*) 'attribute_dist: specify either a value or a return time to evaluate the data at.'
+            write(*,*) 'attribute_dist: specify either a value or a return time to evaluate the data at.'
+            call exit(-1)
+        end if
+        lincludelast = .true.
+    end if
     call handle_then_now(yrseries,yrcovariate,npernew,fyr,lyr,j1,j2,yr1a,yr2a,yr2b,mens1,mens, &
-        & xyear,ensmax,cov1,cov2,cov3,lprint,lwrite)
+        & xyear,ensmax,cov1,cov2,cov3,lincludelast,lprint,lwrite)
     if ( cov1 > 1e33 .or. cov2 > 1e33 ) then
         if ( lwrite ) print *,'giving up, cov1,cov2 = ',cov1,cov2
         return
@@ -193,6 +206,7 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
         n = n*(n-1)/2
         i = 0
         ! subtract the regression on the covariate first (often trend)
+        allocate(yrseries1(npernew,fyr:lyr,0:mens))
         do iens = mens1,mens
             call fill_linear_array(yrseries,yrcovariate,npernew, &
                 j1,j2,fyr,lyr,iens,iens,xxx(1,1,iens),yrs,nmax,ntot,lwrite)
@@ -201,8 +215,14 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
                 zzz(j) = xxx(2,j,iens) ! covariate
             end do
             call fit(zzz,yyy,ntot,sig,0,intercept,regr,sigb,siga,chi2,q)
-            do j=1,ntot
-                xxx(1,j,iens) = xxx(1,j,iens) - regr*xxx(2,j,iens)
+            do yr=fyr,lyr
+                do mo=1,npernew
+                    if ( yrseries(mo,yr,iens) < 1e33 .and. yrcovariate(mo,yr,iens) < 1e33 ) then
+                        yrseries1(mo,yr,iens) = yrseries(mo,yr,iens) - regr*yrcovariate(mo,yr,iens)
+                    else
+                        yrseries1(mo,yr,iens) = 3e33
+                    end if
+                end do
             end do
         end do
         do iens = mens1,mens
@@ -210,12 +230,22 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
             do jens=iens+1,mens
                 call keepalive1('Computing correlations',i,n)
                 i = i + 1
-                do j=1,ntot
-                    yyy(j) = xxx(1,j,iens)
-                    zzz(j) = xxx(1,j,jens)
+                ntot = 0
+                do yr=fyr,lyr
+                    do mo=1,npernew
+                        if ( yrseries1(mo,yr,iens) < 1e33 .and. yrseries1(mo,yr,jens) < 1e33 ) then
+                            ntot = ntot + 1
+                            yyy(ntot) = yrseries1(mo,yr,iens)
+                            zzz(ntot) = yrseries1(mo,yr,jens)
+                        end if
+                    end do
                 end do
                 df = ntot
-                call pearsnxx(yyy,zzz,ntot,crosscorr(iens,jens),prob,z,ax,sxx,ay,syy,sxy,df)
+                if ( df < 4 ) then
+                    crosscorr(iens,jens) = 3e33
+                else
+                    call pearsnxx(yyy,zzz,ntot,crosscorr(iens,jens),prob,z,ax,sxx,ay,syy,sxy,df)
+                end if
                 crosscorr(jens,iens) = crosscorr(iens,jens)
             end do
         end do
@@ -228,6 +258,19 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
     if ( distribution == 'gev' ) then
         ntype = 2 ! Gumbel plot
         if ( lwrite ) print *,'attribute_dist: calling fitgevcov',j1,j2
+        if ( abs(biasrt) < 1e33 ) then
+            ! first call to get fit parametrs for a random, plausible value of xyear
+            call fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
+                ,crosscorr,a,b,xi,alpha,beta,j1,j2,nens1,nens2 &
+                ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
+                ,t,tx,restrain,assume,confidenceinterval,ndecor,.false.,.false.,.false.,.false.,lwrite)
+            ! now compute xyear one based on biasrt in the current climate (cov2)
+            xyear = gevcovreturnlevel(a,b,xi,alpha,beta,log10(biasrt),cov2)
+            if ( lchangesign ) then
+                if ( xyear < 1e33 ) xyear = -xyear
+            end if
+            print '(a,f10.1,a,g12.4)','# Evaluated for a return period of ',biasrt,' yr, corresponding to a value of ',xyear
+        end if
         call fitgevcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
     &       ,crosscorr,a,b,xi,alpha,beta,j1,j2,nens1,nens2 &
     &       ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
@@ -238,6 +281,22 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
         !!!lboot = .false.
         !!!lwrite = .true.
         if ( lwrite ) print *,'attribute_dist: calling fitgpdcov'
+        if ( abs(biasrt) < 1e33 ) then
+            ! first call to get fit parametrs for a random, plausible value of xyear
+            call fitgpdcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
+                ,crosscorr,a,b,xi,alpha,beta,j1,j2,nens1,nens2 &
+                ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
+                ,t,tx,pmindata,restrain,assume,confidenceinterval,ndecor,.false. &
+                ,.false.,.false.,.false.,lwrite)
+            ! now compute xyear one based on biasrt in the current climate (cov2)
+            if ( lchangesign ) then ! other convention, should be fixed
+                if ( a(1) < 1e33 ) a(1) = -a(1)
+                if ( alpha(1) < 1e33 ) alpha(1) = -alpha(1)
+                if ( beta(1) < 1e33 ) beta(1) = -beta(1)
+            end if
+            xyear = gpdcovreturnlevel(a,b,xi,alpha,beta,log10(biasrt),cov2)
+            print '(a,f10.1,a,g12.4)','# evaluated for a return period of ',biasrt,' yr, corresponding to a value of ',xyear    
+        end if
         call fitgpdcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
     &       ,crosscorr,a,b,xi,alpha,beta,j1,j2,nens1,nens2 &
     &       ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
@@ -247,14 +306,43 @@ subroutine attribute_dist(series,nperyear,covariate,nperyear1,npermax,yrbeg,yren
         ntype = 2 ! Gumbel plot
         xi = 0
         if ( lwrite ) print *,'attribute_dist: calling fitgumcov'
+        if ( abs(biasrt) < 1e33 ) then
+            ! first call to get fit parametrs for a random, plausible value of xyear
+            call fitgumcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
+                ,crosscorr,a,b,alpha,beta,j1,j2,nens1,nens2 &
+                ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
+                ,t,tx,assume,confidenceinterval,ndecor,.false.,.false.,.false.,.false.,lwrite)
+            ! now compute xyear one based on biasrt in the current climate (cov2)
+            if ( xi(1) /= 0 ) write(0,*) 'attribute_dist: error: xi /= in Gumbel fit ',xi
+            xyear = gevcovreturnlevel(a,b,xi,alpha,beta,log10(biasrt),cov2)
+            if ( lchangesign ) then
+                if ( xyear < 1e33 ) xyear = -xyear
+            end if
+            print '(a,f10.1,a,g12.4)','# evaluated for a return period of ',biasrt,' yr, corresponding to a value of ',xyear    
+        end if
         call fitgumcov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
     &       ,crosscorr,a,b,alpha,beta,j1,j2,nens1,nens2 &
     &       ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
     &       ,t,tx,assume,confidenceinterval,ndecor,lboot,lprint,dump,plot,lwrite)
     else if  ( distribution == 'gauss' ) then
-        ntype = 4 ! sqrtlog plot
+        ntype = 3 ! log plot (sqrtlog gives straight lines, but this makes it easier to compare with other plots)
         xi = 0
         if ( lwrite ) print *,'attribute_dist: calling fitgaucov'
+        if ( abs(biasrt) < 1e33 ) then
+            ! first call to get fit parametrs for a random, plausible value of xyear
+            call fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
+                ,crosscorr,a,b,alpha,beta,j1,j2,nens1,nens2 &
+                ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
+                ,t,tx,assume,confidenceinterval,ndecor,.false.,.false.,.false.,.false.,lwrite)
+            print *,'# fitgaucov returns a,b,xi,alpha = ',a,b,xi,alpha
+            if ( lchangesign ) then ! other convention, should be fixed
+                if ( a(1) < 1e33 ) a(1) = -a(1)
+                if ( alpha(1) < 1e33 ) alpha(1) = -alpha(1)
+                if ( beta(1) < 1e33 ) beta(1) = -beta(1)
+            end if
+            xyear = gaucovreturnlevel(a,b,xi,alpha,beta,log10(biasrt),cov2)
+            print '(a,f10.1,a,g12.4)','# evaluated for a return period of ',biasrt,' yr, corresponding to a value of ',xyear    
+        end if
         call fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr,mens1,mens & 
     &       ,crosscorr,a,b,alpha,beta,j1,j2,nens1,nens2 &
     &       ,lweb,ntype,lchangesign,yr1a,yr2a,yr2b,xyear,idmax,cov1,cov2,cov3,offset &
@@ -664,25 +752,25 @@ subroutine get_covariate_extrayear(covariate,nperyear,npermax,yrbeg,yrend,mens1,
 end subroutine
 
 subroutine fill_linear_array(series,covariate,nperyear,j1,j2,fyr,lyr,mens1,mens,&
-&   xx,yrs,nmax,ntot,lwrite)
+    xx,yrs,nmax,ntot,lwrite)
 
-    ! transfer the valid pairs in series, covariate to xx(1:2,1:ntot)
-    
+!   transfer the valid pairs in series, covariate to xx(1:2,1:ntot)
+
     implicit none
-    integer nperyear,j1,j2,fyr,lyr,mens1,mens,nmax,ntot
-    integer yrs(0:nmax)
-    real series(nperyear,fyr:lyr,0:mens),covariate(nperyear,fyr:lyr,0:mens),xx(2,nmax)
-    integer yy,yr,mm,mo,day,month,yrstart,yrstop,iens
-    logical lwrite
+    integer,intent(in) :: nperyear,j1,j2,fyr,lyr,mens1,mens,nmax
+    integer,intent(out) :: ntot,yrs(0:nmax)
+    real,intent(in) :: series(nperyear,fyr:lyr,0:mens),covariate(nperyear,fyr:lyr,0:mens)
+    real,intent(out) :: xx(2,nmax)
+    integer :: yy,yr,mm,mo,day,month,yrstart,yrstop,iens
+    logical :: lwrite
 
     if ( lwrite ) then
         print *,'fill_linear_array: nperyear,j1,j2,fyr,lyr,mens1,mens = ', &
-        &   nperyear,j1,j2,fyr,lyr,mens1,mens
+            nperyear,j1,j2,fyr,lyr,mens1,mens
         if ( .true. ) then
             print *,'first value each year to give an impression'
             do yr=fyr,lyr
-                if ( series(j1,yr,mens1) < 1e33 .and. &
-     &               covariate(j1,yr,mens1) < 1e33 ) then
+                if ( series(j1,yr,mens1) < 1e33 .and. covariate(j1,yr,mens1) < 1e33 ) then
                     print *,yr,series(j1,yr,mens1),covariate(j1,yr,mens1)
                 end if
             end do
@@ -901,66 +989,74 @@ subroutine print_spatial_scale(scross,years)
 end subroutine print_spatial_scale
 
 subroutine handle_then_now(series,covariate,nperyear,fyr,lyr,j1,j2,yr1a,yr2a,yr2b, &
-    &   mens1,mens,xyear,ensmax,cov1,cov2,cov3,lprint,lwrite)
+    &   mens1,mens,xyear,ensmax,cov1,cov2,cov3,lincludelast,lprint,lwrite)
 
     ! handle the conversion from "then" (yr1a) and "now" (yr2a) to the variables
-    ! fitgevcov expects (xyear,idmax,cov1,cov2), sets series to undef at "now".
+    ! fitgevcov expects (xyear,idmax,cov1,cov2), sets series to undef at "now" if xyear is not set.
     
     implicit none
     integer nperyear,fyr,lyr,j1,j2,yr1a,yr2a,yr2b,mens1,mens,ensmax
     real series(nperyear,fyr:lyr,0:mens),covariate(nperyear,fyr:lyr,0:mens)
-    real xyear,cov1,cov2,cov3
-    logical lprint,lwrite
+    real,intent(inout) :: xyear
+    real,intent(out) :: cov1,cov2,cov3
+    logical,intent(in) :: lincludelast,lprint,lwrite
     real dummy
 
-    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr1a,cov1,dummy,ensmax,1,lprint,lwrite)
-    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr2a,cov2,xyear,ensmax,2,lprint,lwrite)
-    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr2b,cov3,dummy,ensmax,3,lprint,lwrite)
+    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr1a,cov1,dummy,ensmax,1,lincludelast,lprint,lwrite)
+    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr2a,cov2,xyear,ensmax,2,lincludelast,lprint,lwrite)
+    call find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr2b,cov3,dummy,ensmax,3,lincludelast,lprint,lwrite)
 
 end subroutine handle_then_now
 
-subroutine find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr,cov,xyear,ensmax,i12,lprint,lwrite)
+subroutine find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr,cov,xyear,ensmax,i12,lincludelast,lprint,lwrite)
     implicit none
     integer,intent(in) :: nperyear,fyr,lyr,mens1,mens,j1,j2,i12
     integer,intent(inout) :: yr,ensmax
     real,intent(in) :: covariate(nperyear,fyr:lyr,0:mens)
     real,intent(inout) :: series(nperyear,fyr:lyr,0:mens)
     real,intent(out) :: cov,xyear
-    logical lchangesign,lprint,lwrite
+    logical,intent(in) :: lincludelast,lprint,lwrite
     integer i,j,mo,momax,yrmax,iens
     real s
 
+    if ( mens < 0 ) then
+        write(0,*) 'find_cov: internal error: mens < 0 ',mens
+        call exit(-1)
+    end if
     cov = 3e33
     if ( yr == -9999 ) return
     ensmax = -1
-    if ( yr /= 9999 ) then
-        s = -3e33
-        do iens=mens1,mens
-            do mo=j1,j2
-                j = mo
-                call normon(j,yr,i,nperyear)
-                if ( i >= fyr .and. i <= lyr ) then
-                    if ( series(j,i,iens) < 1e33 .and. series(j,i,iens) > s ) then
-                        s = series(j,i,iens)
-                        momax = j
-                        yrmax = i
-                        ensmax = iens
-                    end if
+    s = -3e33
+    do iens=mens1,mens
+        do mo=j1,j2
+            j = mo
+            call normon(j,yr,i,nperyear)
+            if ( i >= fyr .and. i <= lyr ) then
+                if ( series(j,i,iens) < 1e33 .and. series(j,i,iens) > s ) then
+                    s = series(j,i,iens)
+                    momax = j
+                    yrmax = i
+                    ensmax = iens
                 end if
-            end do
+            end if
         end do
-    end if
+    end do
     if ( abs(s) > 1e33 ) then
         momax = 1
         yrmax = yr
         ensmax = mens1
         if ( yrmax < fyr .or. yrmax > lyr ) then
-            if ( lprint ) then
+            if ( lprint .and. yr /= 9999 ) then
                 write(0,*) 'find_cov: error: yr ',yr,' outside range of data<br>'
+                call exit(-1)
             end if
         end if
     end if
-    cov = covariate(momax,yrmax,ensmax)
+    if ( yr == 9999 ) then
+        cov = 0
+    else
+        cov = covariate(momax,yrmax,ensmax)
+    end if
     if ( cov > 1e33 ) then
         if ( lprint ) then
             write(0,*) '<p>find_cov: error: no valid value in covariate(', &
@@ -979,7 +1075,9 @@ subroutine find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr,cov,xy
                 call exit(-1)
             end if
             xyear = series(momax,yrmax,ensmax)
-            series(momax,yrmax,mens1:mens) = 3e33 ! for GPD we should also make a few values to the sides undef
+            if ( .not.lincludelast ) then
+                series(momax,yrmax,mens1:mens) = 3e33 ! for GPD we should also make a few values to the sides undef
+            end if
         else
             ensmax = -1 ! xyear was given by user, note that there is no need to set the series to undef in this case
         end if
@@ -995,10 +1093,9 @@ subroutine find_cov(series,covariate,nperyear,fyr,lyr,mens1,mens,j1,j2,yr,cov,xy
 end subroutine find_cov
 
 subroutine subtract_constant(covariate,series,nperyear,fyr,lyr,mens1,mens,cov1,cov2,cov3,offset,lwrite)
-
-    ! subtract a constant from the covariate series and the reference points
-    ! to keep numbers small
-    
+!
+!   subtract a constant from the covariate series and the reference points to keep numbers small
+!
     implicit none
     integer nperyear,fyr,lyr,mens1,mens
     real covariate(nperyear,fyr:lyr,0:mens),series(nperyear,fyr:lyr,0:mens)

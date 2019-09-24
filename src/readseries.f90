@@ -45,7 +45,7 @@ subroutine readseriesmeta(infile,data,npermax,yrbeg,yrend,nperyear, &
         iarray2(13),iret1,iret2
     logical :: lagain,lexist
     real*8 :: x,y,x1,y1,val12(366)
-    character file*50000,ncfile*1023,line*10000
+    character :: file*1023,ncfile*1023,line*10000
     integer :: getnumwords,monthinline
     save dpm,dpm0
     data dpm0 /31,29,31,30,31,30,31,31,30,31,30,31/
@@ -72,7 +72,7 @@ subroutine readseriesmeta(infile,data,npermax,yrbeg,yrend,nperyear, &
             ncfile = file(:i-1)//'.nc'
             inquire(file=trim(ncfile),exist=lexist)
             if ( lexist ) then
-            ! check that it is not older than the ascii file
+                ! check that it is not older than the ascii file
                 call mystat(trim(infile),iarray1,iret1)
                 call mystat(trim(ncfile),iarray2,iret2)
                 if ( iret1 == 0 .and. iret2 == 0 ) then
@@ -118,7 +118,7 @@ subroutine readseriesmeta(infile,data,npermax,yrbeg,yrend,nperyear, &
         if ( unit /= 5 ) close(unit)
         return
     end if
-!       first look for explicit months
+!   first look for explicit months
     imonth = monthinline(line)
     nperyear = getnumwords(line) - 1
     if ( nperyear == 2 ) then
@@ -152,27 +152,33 @@ subroutine readseriesmeta(infile,data,npermax,yrbeg,yrend,nperyear, &
 !   often there is a yearly mean/sum at the end
     if ( nperyear == 13 ) nperyear = 12
     if ( nperyear > npermax ) then
-        write(0,*) 'readseries: error: increase npermax ',npermax &
-        ,nperyear
-        write(*,*) 'readseries: error: increase npermax ',npermax &
-        ,nperyear
+        write(0,*) 'readseries: error: increase npermax ',npermax,nperyear
+        write(*,*) 'readseries: error: increase npermax ',npermax,nperyear
         call exit(-1)
     end if
+    if ( lwrite ) print *,'first guess nperyear = ',nperyear
     if ( imonth > 0 ) then
+        if ( lwrite ) print *,'calling readdymoyrval'
         call readdymoyrval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
     elseif ( nperyear == 1 ) then
+        if ( lwrite ) print *,'calling readyrfracval'
         call readyrfracval(data,npermax,yrbeg,yrend,nperyear,line,unit,infile,lwrite)
     elseif ( nperyear == 2 ) then
         if ( reallynperyear == 2 ) then
+            if ( lwrite ) print *,'calling readyrval'
             call readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
         else
+            if ( lwrite ) print *,'calling readyrmoval'
             call readyrmoval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
         end if
     elseif ( nperyear == 3 ) then
+        if ( lwrite ) print *,'calling readyrmodyval'
         call readyrmodyval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
     elseif ( nperyear == 366*24 ) then
+        if ( lwrite ) print *,'calling readyrmodyhrval'
         call readyrmodyhrval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
     else
+        if ( lwrite ) print *,'calling readyrval'
         call readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
     end if
     if ( unit /= 5 ) then
@@ -180,8 +186,7 @@ subroutine readseriesmeta(infile,data,npermax,yrbeg,yrend,nperyear, &
         close(unit)
     end if
     if ( lstandardunits ) then
-        call makestandardseries(data,npermax,yrbeg,yrend,nperyear &
-            ,var,units,lwrite)
+        call makestandardseries(data,npermax,yrbeg,yrend,nperyear,var,units,lwrite)
     end if
     return
 902 print *,'readseries: error opening ',trim(file)
@@ -205,23 +210,14 @@ subroutine readseriesheader(var,units,lvar,svar,history,metadata,line,unit,lwrit
     history = ' '
     metadata = ' '
     n = 0
-    iline = 0
 100 continue
     read(unit,'(a)',err=903,end=900) line
     if ( lwrite ) print *,'readseriesheader: processing line ',trim(line)
 !   the Mac sometimes gets confused and puts something else before the '#'
-    if ( line(1:1) == '#' .or. line(2:2) == '#' .or. line == ' ' ) then
-!       do not count lines, but look for '#'
-        if ( lwrite ) print *,'found new-style #-comments'
-        iline = -1
-    else if ( iline == -1 ) then
-        if ( lwrite ) print *,'end of #-comments - return'
+    if ( line(1:1) /= '#' .and. line(2:2) /= '#' .and. line /= ' ' .and. &
+         index(line,'error') == 0 ) then
+        if ( lwrite ) print *,'First line with data ',trim(line)
         return
-    else if ( onlynumbers(line) ) then
-        if ( lwrite ) print *,'line with only numbers - return'
-        return
-    else
-        iline = iline + 1
     end if
 
 !   metadata (my convention)
@@ -244,7 +240,7 @@ subroutine readseriesheader(var,units,lvar,svar,history,metadata,line,unit,lwrit
         end if
         go to 100
     end if
-    
+
 !   var, units, lvar
 
     j = index(line,'[')
@@ -297,9 +293,7 @@ subroutine readseriesheader(var,units,lvar,svar,history,metadata,line,unit,lwrit
             print *,'found lvar  =',trim(lvar)
         end if
     end if
-    if ( iline < 5 ) goto 100
-    read(unit,'(a)') line
-    if ( lwrite ) print *,'First line with data ',trim(line)
+    goto 100
     return
 900 line = ' '
     return
@@ -442,8 +436,7 @@ subroutine readdymoyrval(data,npermax,yrbeg,yrend,nperyear,line &
     call exit(-1)
 end subroutine readdymoyrval
 
-subroutine readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit &
-    ,lwrite)
+subroutine readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
 
 !       format is year val(1) val(2) ...val(nperyear) (nperyear >= 4)
 
@@ -459,10 +452,9 @@ subroutine readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit &
     data lfirst / .true. /
 
     if ( lwrite ) then
-        print *,'readyrval: reading data as '// &
-        'yyyy val1 val2 ... valN (N>3)'
+        print *,'readyrval: reading data as yyyy val1 val2 ... valN (N>3)'
         print *,'readyrval: npermax,yrbeg,yrend,nperyear = ',npermax &
-        ,yrbeg,yrend,nperyear
+            ,yrbeg,yrend,nperyear
     end if
     allocate(val12(npermax))
     read(line,*,err=904,end=300) year,(val12(j),j=1,nperyear)
@@ -482,7 +474,8 @@ subroutine readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit &
     end if
 200 continue
     read(unit,'(a)',err=300,end=300) line
-    if ( line == ' ' .or. line(1:1) == '#' .or. line(2:2) == '#') then
+    if ( line == ' ' .or. line(1:1) == '#' .or. line(2:2) == '#' .or. &
+         index(line,'error') > 0 ) then
         goto 200
     end if
     read(line,*,err=300,end=300) year,(val12(j),j=1,nperyear)
@@ -492,8 +485,7 @@ subroutine readyrval(data,npermax,yrbeg,yrend,nperyear,line,unit &
     return
 904 print *,'readyrval: error reading data of line'
     print '(a)',trim(line)
-    print '(a,i4,1000g14.6)','last data read ',year,(val12(j),j=1 &
-    ,nperyear)
+    print '(a,i4,1000g14.6)','last data read ',year,(val12(j),j=1,nperyear)
     call exit(-1)
 end subroutine readyrval
 
@@ -508,7 +500,7 @@ subroutine readyrfracval(data,npermax,yrbeg,yrend,nperyear,line,unit,infile,lwri
     logical :: lwrite
     character line*(*),infile*(*)
     integer :: i,j,k,n,year,month,day,hour,year1,month1,day1,hour1,ymdh &
-        ,dpm(12),nperyear1,jul,jul1
+        ,dpm(12),nperyear1,jul,jul1,nn
     integer,external :: julday,leap,getj
     save dpm
     real*8 :: x,y,x1,y1
@@ -584,7 +576,7 @@ subroutine readyrfracval(data,npermax,yrbeg,yrend,nperyear,line,unit,infile,lwri
         call yyyymmddhh(line,ymdh,year1,month1,day1,hour1)
         if ( lwrite ) print *,'read and interpreted ',year1,month1,day1,hour1,y1
         if ( day > dpm(month) .or. day > 28 .and. month == 2 .and. leap(year) == 1 ) then
-            write(0,'(a,2i3,i5)') '# readseries: disregarded invalid date ',day,month,year
+            write(0,'(a,2i3,i5)') '# readseries: disregarded invalid date yyyymmdd ',day,month,year
             goto 402
         end if
     end if
@@ -603,8 +595,7 @@ subroutine readyrfracval(data,npermax,yrbeg,yrend,nperyear,line,unit,infile,lwri
                 ,month,year,hour1,day1,month1,year1
             goto 402
         end if
-        nperyear = max(nperyear, &
-        nint((24*366.)/(24*(jul1-jul) + (hour1-hour))))
+        nperyear = max(nperyear,nint((24*366.)/(24*(jul1-jul) + (hour1-hour))))
     end if
 !   round-off errors...
     call adjustnperyear(nperyear,lwrite)
@@ -684,27 +675,50 @@ subroutine readyrfracval(data,npermax,yrbeg,yrend,nperyear,line,unit,infile,lwri
         nperyear1 = nint(1/(x1-x))
         call adjustnperyear(nperyear1,lwrite)
     else
+        nn = max(1,nint(nperyear/366.))
         read(line,*,err=904,end=500) ymdh,y1
         call yyyymmddhh(line,ymdh,year1,month1,day1,hour1)
+        if ( lwrite ) print *,'read and interpreted ',year1,month1,day1,hour1,y1        
         if ( day1 > dpm(month1) .or. &
-             day1 > 28 .and. month1 == 2 .and. leap(year1) == 1 ) then
-            write(0,'(a,2i3,i5)') '# readseries: disregarded invalid date ',day1,month1,year1
-            goto 460
+             nperyear/nn /= 360 .and. day1 > 28 .and. month1 == 2 .and. leap(year1) == 1 ) then
+            if ( month1 == 2 .and. data(1+nn*30,year1) > 1e33 ) then
+                ! 360-day calendar
+                if ( lwrite ) print *,'# 360-day calendar detected'
+                nperyear = 360*nn
+                do i=1,12
+                    dpm(i) = 30
+                end do
+                if ( lwrite ) print *,'shifting ',1+nn*30+nn,1+nn*58+nn,' to ',1+nn*30,1+nn*58
+                do i=1+nn*30,1+nn*58
+                    data(i,year1) = data(i+nn,year1)
+                end do
+            else
+                write(0,'(a,2i3,i5)') '# readseries: disregarded invalid date yymmdd 2 ',day1,month1,year1
+                goto 460
+            end if
         end if
-        jul = julday(month,day,year)
-        jul1 = julday(month1,day1,year1)
+        if ( nperyear/nn /= 360 ) then
+            jul = julday(month,day,year)
+            jul1 = julday(month1,day1,year1)
+        else
+            jul = day + 30*month + 360*(year-1900)
+            jul1 = day1 + 30*month1 + 360*(year1-1900)
+        end if
         if ( jul == jul1 .and. hour == hour1 ) then
             write(0,*) 'readyrfracval: duplicate date 2 ',hour,day &
                 ,month,year,hour1,day1,month1,year1
             goto 460
         end if
-        nperyear1 = nint((24*366.)/(24*(jul1-jul) + (hour1-hour)))
-        if ( lwrite .and. nperyear1 /= nperyear ) then
-            print *,'nperyear1 = ',nperyear1
-            print *,'date  = ',year,month,day,hour
-            print *,'date1 = ',year1,month1,day1,hour1
+        nperyear1 = nint((24.*360)/(24.*(jul1-jul) + (hour1-hour)))
+        if ( lwrite ) print *,'nperyear1 = ',nperyear1
+        if ( nperyear1 > nperyear ) then
+            if ( lwrite .and. nperyear1 /= nperyear ) then
+                print *,'nperyear1 = ',nperyear1
+                print *,'date  = ',year,month,day,hour
+                print *,'date1 = ',year1,month1,day1,hour1
+            end if
+            call adjustnperyear(nperyear1,lwrite)
         end if
-        call adjustnperyear(nperyear1,lwrite)
     end if
     if ( nperyear1 > nperyear ) then
         if ( lwrite ) print *,'adjusting nperyear from ',nperyear,' to ',nperyear1
@@ -819,8 +833,7 @@ subroutine readyrmodyval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
         goto 899
     end if
     if ( day < 1 .or. day > dpm(month) ) then
-        if ( day == 30 .and. month == 2 .and. &
-        data(31,year) > 1e33) then
+        if ( day == 30 .and. month == 2 .and. data(31,year) > 1e33) then
             nperyear = 360
             do i=1,12
                 dpm(i) = 30
@@ -829,7 +842,7 @@ subroutine readyrmodyval(data,npermax,yrbeg,yrend,nperyear,line,unit,lwrite)
                 data(i-1,year) = data(i,year)
             end do
         else
-            write(0,*) 'invalid day ',day
+            write(0,*) '# invalid day ',day
             goto 899
         end if
     end if
@@ -1129,9 +1142,10 @@ integer function getj(month,day,hour,nperyear)
 
     implicit none
     integer :: month,day,hour,nperyear
-    integer :: j,k,dpm(12)
+    integer :: j,k,dpm(12),nn
     data dpm /31,29,31,30,31,30,31,31,30,31,30,31/
 
+    nn = nint(nperyear/366.)
     if ( nperyear == 1 ) then
         j = 1
     elseif ( nperyear == 4 ) then
@@ -1139,21 +1153,18 @@ integer function getj(month,day,hour,nperyear)
         if ( j > 4 ) j = j - 4
     elseif ( nperyear == 12 ) then
         j = month
+    elseif ( nperyear == 360*nn ) then
+        j = 30*(month-1) + day
+        if ( nn > 1 ) then
+            j = nn*(j-1) + hour/(24/nn) + 1
+        end if
     else
         j = day
         do k=1,month-1
             j = j + dpm(k)
         end do
-        if ( nperyear >= 24*360 ) then
-            j = 24*(j-1) + hour
-        else if ( nperyear >= 8*360 ) then
-            j = 8*(j-1) + mod(hour,3) + 1
-        else if ( nperyear >= 4*360 ) then
-            j = 4*(j-1) + mod(hour,6) + 1
-        else if ( nperyear >= 2*360 ) then
-            j = 2*(j-1) + mod(hour,12) + 1
-        elseif ( nperyear < 360 ) then
-            j = 1 + (j-1)*nperyear/365
+        if ( nn > 1 ) then
+            j = nn*(j-1) + hour/(24/nn) + 1
         end if
     end if
     getj = j
@@ -1193,8 +1204,7 @@ subroutine adjustnperyear(nperyear,lwrite)
         call exit(-1)
     end if
     if ( lwrite .and. nperyear /= nperyearold ) then
-        print *,'adjustnperyear: adjusted ',nperyearold,' to ' &
-        ,nperyear
+        print *,'adjustnperyear: adjusted ',nperyearold,' to ',nperyear
     end if
 end subroutine adjustnperyear
 

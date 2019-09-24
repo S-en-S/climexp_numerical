@@ -133,7 +133,7 @@ subroutine readsetseriesmeta(data,ids,npermax,yrbeg,yrend,nensmax, &
     if ( lwrite ) print *,'reading ',trim(file)
     inquire(file=trim(file),exist=lexist)
     if ( .not. lexist ) then
-        write(0,'(a)') 'skipping file ',trim(file)
+        write(0,'(2a)') 'skipping file ',trim(file)
         goto 1
     end if
     call keepalive1('Reading series',mens,ntot)
@@ -150,7 +150,8 @@ subroutine readsetseriesmeta(data,ids,npermax,yrbeg,yrend,nensmax, &
         nperyear = m
     else
         if ( m /= nperyear ) then
-            write(0,*) 'readsetseries: error: different time scales',m,nperyear
+            write(0,*) 'readsetseries: error: different time scales',m,nperyear, &
+                ' in file ',trim(file)
             call exit(-1)
         endif
     endif

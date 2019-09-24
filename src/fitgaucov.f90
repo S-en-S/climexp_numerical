@@ -51,6 +51,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
     else
         lnone = .false.
     end if
+    restrain = 0 ! no shape parameter
 
     if ( lwrite ) print *,'fitgaucov: calling fill_linear_array'
     call fill_linear_array(yrseries,yrcovariate,npernew,j1,j2, &
@@ -100,7 +101,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
         cmin = min(cmin,xx(2,i))
         cmax = max(cmax,xx(2,i))
     end do
-    call write_obscov(xx,yrs,ntot,-3e33,cov2,xyear,year,offset,lchangesign)
+    if ( dump ) call write_obscov(xx,yrs,ntot,-3e33,cov2,xyear,year,offset,lchangesign)
 !
     sig = 0
     call moment(yy,ntot,mean,adev,sd,var,skew,curt)
@@ -164,7 +165,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
         call getabfromcov(a,b,alpha,beta,cov3,aaa,bbb)
         acov(1,3) = aaa
     end if
-    call write_threshold(cmin,cmax,a,b,xi,alpha,beta,offset,lchangesign,gaucovreturnlevel)
+    if ( dump ) call write_threshold(cmin,cmax,a,b,xi,alpha,beta,offset,lchangesign,gaucovreturnlevel)
 !
 !   Bootstrap for error estimate
 !
@@ -378,7 +379,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
             print '(a)','# <tr><td colspan="4">Fitted to normal '// &
                 'distribution P(x) = exp(-(x-&mu;'')&sup2;'// &
                 '/(2&sigma;''&sup2;))/(&sigma;''&radic;(2&pi;))</td></tr>'
-            call printab(lweb)
+            call printab(restrain,lnone,lweb)
             call getabfromcov(a,b,alpha,beta,cov1,aaa,bbb)
             call getabfromcov(a25,b25,alpha,beta,cov1,aa25,bb25)
             call getabfromcov(a975,b975,alpha,beta,cov1,aa975,bb975)
@@ -420,7 +421,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
                 '# b/a = ',ba,' \\pm ',(ba975-ba25)/2
         else
             print '(a)','# p(x) = exp(-(x-a'')^2/(2*b''^2))/(b''*sqrt(2*pi)) with'
-            call printab(lweb)
+            call printab(restrain,lnone,lweb)
             call getabfromcov(a,b,alpha,beta,cov1,aaa,bbb)
             call getabfromcov(a25,b25,alpha,beta,cov1,aa25,bb25)
             call getabfromcov(a975,b975,alpha,beta,cov1,aa975,bb975)
@@ -448,7 +449,7 @@ subroutine fitgaucov(yrseries,yrcovariate,npernew,fyr,lyr &
         call plot_tx_cdfs(txtx,nmc,nmc,ntype,j1,j1)
     end if
     if ( plot ) write(11,'(3g20.4,a)') alpha,alpha25,alpha975,' alpha'
-    call write_dthreshold(cov1,cov2,cov3,acov,offset,lchangesign)
+    if ( dump ) call write_dthreshold(cov1,cov2,cov3,acov,offset,lchangesign)
 
     ! no cuts
     mindata = -2e33
@@ -710,12 +711,14 @@ real function gaucovreturnlevel(a,b,xi,alpha,beta,x,cov)
     real :: aa,bb,f,z,t
     real,external :: serfci
 !
+    !!!print *,'# gauscovreturnlevel: input: a,b,xi,alpha,beta,x,cov = ',a,b,xi,alpha,beta,x,cov
     call getabfromcov(a,b,alpha,beta,cov,aa,bb)
     f = 10.**x
     f = 2/f
     z = serfci(f)
     t = aa + sqrt(2.)*bb*z
     gaucovreturnlevel = t
+    !!!!print *,'# gauscovreturnlevel: output: ',t
 end function gaucovreturnlevel
 
 real function gaucovreturnyear(a,b,xi,alpha,beta,xyear,cov,lchangesign)

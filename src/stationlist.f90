@@ -334,7 +334,8 @@
              prog(1:3) == 'eca' .or. prog(1:4) == 'beca' .or. &
              prog(1:7) == 'getprcp' .or. prog(1:7) == 'gettemp' .or. &
              prog(1:6) == 'getmin' .or. prog(1:6) == 'getmax' .or. &
-             prog(1:6) == 'getslp' .or. prog(1:9) == 'getfrench' ) then
+             prog(1:6) == 'getslp' .or. prog(1:9) == 'getfrench' .or. &
+             prog(1:10) == 'getaustria' ) then
             write(command,'(6a)') trim(dir)//'bin/',trim(prog), &
                 ' ',trim(code),' ',trim(datfile)//'.'//pid
         else
@@ -748,7 +749,7 @@
             if ( i-1 > 0 ) then
                 print '(a,i5,a,i5,a,f7.2,a,f6.2,a)','There are ',i-1,'/' &
                     ,nsigns,' (',100*(i-1)/real(n) &
-                    ,'%) stations with P < ',100*psigns(isign),'%<br>'
+                    ,'%) stations with <i>p</i>&lt;',100*psigns(isign),'%<br>'
                 else
                     print '(a,f6.2,a)','No significant trends at <i>p</i>&lt;',100*psigns(isign),'%<br>'
                     exit
